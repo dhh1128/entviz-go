@@ -1,0 +1,134 @@
+name: Release
+
+# Tag-triggered GitHub release. A human bumps the LibVersion constant + tags;
+# this workflow re-runs the FULL CI gate set (gofmt + vet + test, and Tier-A
+# conformance — mirroring ci.yml so a direct-push tag can never ship a version
+# that would have failed CI), verifies the tag matches LibVersion, and creates
+# the GitHub release. Go has no central registry to push to: pkg.go.dev indexes
+# the module straight from the pushed tag, so "publish" == "tag + release".
+# Actions are pinned by node24 commit SHA, matching ci.yml. No untrusted
+# github.event.* data is interpolated (only the trusted tag ref GITHUB_REF_NAME,
+# which only a maintainer who can push tags controls).
+on:
+  push:
+    tags:
+      - "v*"
+
+# Least privilege: read-only by default. contents:write is granted ONLY to the
+# publish job (the single job that creates the GitHub release); the gate and
+# conformance jobs run with no write access.
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gofmt + vet + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version: stable
+
+      - name: Gate (gofmt + vet + test)
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "${unformatted}" ]; then
+            echo "::error::these files are not gofmt-clean:"
+            echo "${unformatted}"
+            exit 1
+          fi
+          go vet ./...
+          go test ./... -race -cover
+
+  conformance:
+    name: spec-sync + Tier-A conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      # The entviz reference repo carries the algorithm spec, SPEC_VERSION, and
+      # the golden conformance corpus this module is certified against.
+      - name: Check out the entviz reference (spec + corpus)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          repository: dhh1128/entviz
+          path: entviz-ref
+          persist-credentials: false
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        with:
+          go-version: stable
+
+      - name: Build the conformance binary
+        run: go build -o "${GITHUB_WORKSPACE}/entviz-conformance" ./cmd/entviz-conformance
+
+      - name: Install the Tier-A harness (lxml only; no rasterizer needed)
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/harness
+          /tmp/harness/bin/pip install --quiet --upgrade pip
+          /tmp/harness/bin/pip install --quiet lxml
+
+      # Tier A (render model) + error-rejection vectors. On a release tag the
+      # spec versions are expected to match, so this is a hard gate; the
+      # drift-tolerant warning path mirrors ci.yml. No untrusted GitHub event
+      # data is interpolated here (only trusted workspace paths).
+      - name: Spec-version sync check + Tier-A conformance
+        run: |
+          set -euo pipefail
+          ours=$(grep -oP 'SpecVersion = "\Kv[0-9]+' core.go)
+          ref=$(grep -oP 'SPEC_VERSION = "\Kv[0-9]+' entviz-ref/src/entviz/__init__.py)
+          echo "entviz-go targets spec ${ours}; reference impl/spec is ${ref}"
+          bin="${GITHUB_WORKSPACE}/entviz-conformance"
+          run_conformance() {
+            ( cd entviz-ref \
+              && PYTHONPATH=src:. /tmp/harness/bin/python -m compliance.runner \
+                   --impl-cmd "${bin}" --tiers A )
+          }
+          if [ "${ours}" = "${ref}" ]; then
+            echo "Spec versions match — conformance is a hard gate."
+            run_conformance
+          else
+            echo "::warning title=Spec drift::reference impl/spec is ${ref} but entviz-go targets ${ours} — an upgrade is needed"
+            if [ "${ref#v}" -gt "${ours#v}" ]; then
+              run_conformance || echo "::warning title=Conformance::failed against the newer reference corpus (expected while behind)"
+            else
+              run_conformance
+            fi
+          fi
+
+  publish:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs: [gate, conformance]
+    # contents:write is scoped to THIS job only — the one that creates the
+    # GitHub release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Verify the tag matches LibVersion
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          lib=$(grep -oP 'LibVersion = "\K[^"]+' core.go)
+          echo "tag=${tag} LibVersion=${lib}"
+          if [ "${tag}" != "${lib}" ]; then
+            echo "::error::tag ${tag} does not match LibVersion ${lib} in core.go"
+            exit 1
+          fi
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --generate-notes

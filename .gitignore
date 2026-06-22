@@ -1,0 +1,12 @@
+# Build / test artifacts
+/entviz-conformance
+*.test
+*.out
+coverage.out
+*.log
+.DS_Store
+
+# tick ledger working files
+/.tick
+.tick.lock
+.ai-safety-check.*
