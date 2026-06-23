@@ -9,6 +9,7 @@ package entviz
 // match. A hard parse error (EIP-55 checksum failure) aborts the whole render.
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -673,6 +674,47 @@ func leiChecksumOK(lei string) bool {
 	return rem == 1
 }
 
+// didRegex matches a W3C DID or DID URL: did:<method>:<msid> with an optional
+// DID-URL tail (path/query/fragment). The method is lowercase [a-z0-9]+; the
+// msid MAY contain ':' and ends at the first '/', '?', or '#'. The trailing '-'
+// in the msid class is a literal (last in the class).
+var didRegex = regexp.MustCompile(`^did:([a-z0-9]+):([A-Za-z0-9._%:-]+)(?:[/?#].*)?$`)
+
+// urnRegex matches an RFC 8141 URN: urn:<NID>:<NSS> with optional
+// r-/q-/f-components. Case-insensitive on the scheme+NID (captured groups keep
+// their original case); the NSS keeps '/' and ends at the first '?' or '#'.
+var urnRegex = regexp.MustCompile(`(?i)^urn:([A-Za-z0-9][A-Za-z0-9-]{0,31}):([^?#]+)(?:[?#].*)?$`)
+
+// parseDid parses a W3C DID / DID URL. The method-specific-id is the core, kept
+// VERBATIM and NOT case-folded; the did:<method>: prefix is IDENTITY (bound by
+// prefix-fold via PrefixSemantic); the DID-URL tail is dropped.
+func parseDid(text string) (*Parsed, error) {
+	if text == "" {
+		return nil, nil
+	}
+	m := didRegex.FindStringSubmatch(text)
+	if m == nil {
+		return nil, nil
+	}
+	method, msid := m[1], m[2]
+	return newParsed("", BASE64URL, strPtr("did:"+method+":"), msid, nil).semantic(), nil
+}
+
+// parseUrn parses an RFC 8141 URN. The NSS is the core, kept VERBATIM (case
+// preserved, '/' retained); the urn:<nid>: prefix is IDENTITY (NID LOWERCASED)
+// bound by prefix-fold; the r-/q-/f-components are dropped.
+func parseUrn(text string) (*Parsed, error) {
+	if text == "" {
+		return nil, nil
+	}
+	m := urnRegex.FindStringSubmatch(text)
+	if m == nil {
+		return nil, nil
+	}
+	nid, nss := strings.ToLower(m[1]), m[2]
+	return newParsed("", BASE64URL, strPtr("urn:"+nid+":"), nss, nil).semantic(), nil
+}
+
 func parseSWHID(text string) (*Parsed, error) {
 	low := strings.ToLower(text)
 	types := []string{"snp", "rel", "rev", "dir", "cnt"}
@@ -1032,6 +1074,8 @@ var parsers = []parserFn{
 	parseULID,
 	parseSnowflake,
 	parseLEI,
+	parseDid,
+	parseUrn,
 	parseSWHID,
 	parseGitoid,
 	parseBech32Address,

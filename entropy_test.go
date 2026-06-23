@@ -197,3 +197,71 @@ func TestTokenizeEntropyLargeInput(t *testing.T) {
 		t.Errorf("token count = %d, want 20", len(toks))
 	}
 }
+
+func assertDidUrn(t *testing.T, in, wantPrefix, wantCore string) *Parsed {
+	t.Helper()
+	p := mustParse(t, in)
+	if p.TypeName != "" {
+		t.Errorf("%q TypeName = %q, want empty", in, p.TypeName)
+	}
+	if !p.PrefixSemantic {
+		t.Errorf("%q PrefixSemantic = false, want true", in)
+	}
+	if p.Alphabet.Name != BASE64URL.Name {
+		t.Errorf("%q alphabet = %s, want base64url", in, p.Alphabet.Name)
+	}
+	if p.Prefix == nil || *p.Prefix != wantPrefix {
+		t.Errorf("%q prefix = %v, want %q", in, p.Prefix, wantPrefix)
+	}
+	if p.Core != wantCore {
+		t.Errorf("%q core = %q, want %q", in, p.Core, wantCore)
+	}
+	if p.Suffix != nil {
+		t.Errorf("%q suffix = %v, want nil", in, p.Suffix)
+	}
+	return p
+}
+
+func TestDidWebBasic(t *testing.T) {
+	assertDidUrn(t, "did:web:example.com", "did:web:", "example.com")
+}
+
+func TestDidColonPathKept(t *testing.T) {
+	// The method-specific-id MAY contain ':' segment separators (kept verbatim).
+	assertDidUrn(t, "did:web:example.com:user:alice", "did:web:", "example.com:user:alice")
+}
+
+func TestDidUrlTailDropped(t *testing.T) {
+	// A DID-URL tail (path/query/fragment) is dropped; core == the bare body.
+	bare := assertDidUrn(t, "did:web:example.com", "did:web:", "example.com")
+	withTail := assertDidUrn(t, "did:web:example.com/path?q=1#frag", "did:web:", "example.com")
+	if bare.Core != withTail.Core {
+		t.Errorf("tail not dropped: %q vs %q", bare.Core, withTail.Core)
+	}
+}
+
+func TestDidKeyFragmentDropped(t *testing.T) {
+	assertDidUrn(t,
+		"did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+		"did:key:", "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK")
+}
+
+func TestUrnIsbn(t *testing.T) {
+	assertDidUrn(t, "urn:isbn:0451450523", "urn:isbn:", "0451450523")
+}
+
+func TestUrnNidLowercasedNssPreserved(t *testing.T) {
+	// scheme+NID are case-insensitive (NID lowercased); the NSS case is preserved.
+	assertDidUrn(t, "URN:ISBN:0451450523", "urn:isbn:", "0451450523")
+	assertDidUrn(t, "urn:Example:AbC123", "urn:example:", "AbC123")
+}
+
+func TestUrnNssKeepsSlash(t *testing.T) {
+	// Unlike a DID, the URN NSS keeps '/'.
+	assertDidUrn(t, "urn:example:a/b/c", "urn:example:", "a/b/c")
+}
+
+func TestUrnComponentsDropped(t *testing.T) {
+	// r-/q-/f-components end the NSS at the first '?' or '#'.
+	assertDidUrn(t, "urn:example:weather?=op=map&lat=39#frag", "urn:example:", "weather")
+}
