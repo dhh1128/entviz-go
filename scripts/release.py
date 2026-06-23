@@ -79,8 +79,11 @@ def parse_explicit_version(value, current, *, allow_major_jump=False):
         sys.exit(f"--set expects X.Y.Z (got {value!r}).")
     as_tuple = lambda v: tuple(int(p) for p in v.split("."))  # noqa: E731
     new, cur = as_tuple(value), as_tuple(current)
-    if new <= cur:
-        sys.exit(f"--set {value} is not greater than current {current}; refusing to downgrade.")
+    if new < cur:
+        sys.exit(f"--set {value} is older than current {current}; refusing to downgrade.")
+    # new == cur is allowed: a first release (or re-cut) of the version the
+    # constant already carries. ensure_tag_unused() guards the real footgun —
+    # re-releasing a version whose tag already exists.
     if new[0] - cur[0] > 1 and not allow_major_jump:
         sys.exit(
             f"--set {value} raises the major version by more than one step — "
@@ -119,6 +122,14 @@ def check_branch():
 def check_clean():
     if run(["git", "status", "--porcelain"], capture=True).stdout.strip():
         sys.exit("Working tree is not clean. Commit or stash changes first.")
+
+
+def ensure_tag_unused(tag):
+    """Refuse to re-release a version whose tag already exists (local or origin)."""
+    if get(["git", "tag", "-l", tag]):
+        sys.exit(f"Tag {tag} already exists locally — that version is already released.")
+    if run(["git", "ls-remote", "--tags", "origin", tag], capture=True).stdout.strip():
+        sys.exit(f"Tag {tag} already exists on origin — that version is already released.")
 
 
 def check_in_sync():
@@ -164,7 +175,8 @@ def main():
     group.add_argument("--minor", dest="part", action="store_const", const="minor")
     group.add_argument("--patch", dest="part", action="store_const", const="patch")
     group.add_argument("--set", dest="explicit", metavar="X.Y.Z", default=None,
-                       help="set an explicit version instead of bumping; must be > current")
+                       help="set an explicit version instead of bumping; must be >= current "
+                            "(equal is allowed for a first release if its tag does not exist)")
     parser.add_argument("--allow-major-jump", action="store_true",
                         help="permit --set to raise the major version by more than one step")
     parser.add_argument("-m", dest="message", default=None, help="commit message")
@@ -178,6 +190,8 @@ def main():
         label = args.part or "patch"
         new = bump(old, label)
 
+    tag = f"v{new}"
+
     if args.message:
         message = args.message
     elif label == "patch":
@@ -188,17 +202,20 @@ def main():
     check_branch()
     check_clean()
     check_in_sync()
+    ensure_tag_unused(tag)
     warn_if_behind_spec()
     run_gate()
 
-    tag = f"v{new}"
-    verb = "Setting" if args.explicit else "Bumping"
-    print(f"{verb} {old} -> {new}")
-    set_version(new)
-
-    run(["git", "add", "core.go"])
-    run(["git", "commit", "-s", "-m", f"Release {tag}: {message}"])
-    run(["git", "push", "origin", "main"])
+    if new != old:
+        verb = "Setting" if args.explicit else "Bumping"
+        print(f"{verb} {old} -> {new}")
+        set_version(new)
+        run(["git", "add", "core.go"])
+        run(["git", "commit", "-s", "-m", f"Release {tag}: {message}"])
+        run(["git", "push", "origin", "main"])
+    else:
+        print(f"core.go already carries {new}; tagging the current commit "
+              f"(no version-bump commit needed for this first release).")
     run(["git", "tag", "-a", tag, "-m", f"Release {tag}: {message}"])
     run(["git", "push", "origin", tag])
 
