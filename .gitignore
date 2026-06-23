@@ -10,3 +10,6 @@ coverage.out
 /.tick
 .tick.lock
 .ai-safety-check.*
+
+*.pyc
+__pycache__
