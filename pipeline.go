@@ -277,15 +277,28 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	if isTruncated {
 		truncAttr = " data-truncated=\"true\""
 	}
+
+	// Entropy characterization (spec v13): eight reporting-only fields emitted
+	// as data-* attributes on the root <svg>. These add no ink (the closed
+	// profile permits extra data-*), so the golden raster is unaffected. Parse
+	// already succeeded above, so Characterize does not error here.
+	ch, _ := Characterize(rawInput)
+	charAttrs := fmt.Sprintf(
+		" data-encoding=\"%s\" data-scheme=\"%s\" data-role=\"%s\" data-size-basis=\"%s\" "+
+			"data-entropy-type=\"%s\" data-size-bits=\"%d\" data-qualifiers=\"%s\" data-parts=\"%s\"",
+		escAttr(ch.Encoding), escAttr(ch.SchemeAttr()), escAttr(ch.RoleAttr()), escAttr(ch.SizeBasis),
+		escAttr(ch.EntropyType), ch.SizeBits, escAttr(ch.QualifiersJSON()), escAttr(ch.PartsJSON()),
+	)
+
 	s.WriteString(fmt.Sprintf(
 		"<svg width=\"%s\" height=\"%s\" viewBox=\"0 0 %s %s\" xmlns=\"http://www.w3.org/2000/svg\" "+
 			"font-family=\"%s\" "+
 			"data-entviz-version=\"%s\" data-entviz-lib=\"%s\" data-input-bytes=\"%d\" "+
-			"data-cols=\"%d\" data-rows=\"%d\"%s>",
+			"data-cols=\"%d\" data-rows=\"%d\"%s%s>",
 		n(boundingW), n(boundingH), n(boundingW), n(boundingH),
 		escAttr(monospaceFontFamily),
 		SpecVersion, LibVersion, len(rawInput),
-		grid.Cols, grid.Rows, truncAttr,
+		grid.Cols, grid.Rows, truncAttr, charAttrs,
 	))
 
 	// defs + clipPath
