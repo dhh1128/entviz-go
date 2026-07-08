@@ -18,6 +18,7 @@ import (
 
 const (
 	dpi                 = 96.0
+	MARGIN              = 1.0
 	noteMaxLen          = 10
 	maxInputChars       = 65536
 	monospaceFontFamily = "\"JetBrains Mono\", \"Menlo\", \"Consolas\", \"DejaVu Sans Mono\", \"Liberation Mono\", \"Roboto Mono\", \"Noto Sans Mono\", monospace"
@@ -203,16 +204,18 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	gridW := cellW * float64(grid.Cols)
 	gridH := cellH * float64(grid.Rows)
 
-	boundingW := 1.0 + barW + 1.0 + gm + gridW + gm + 1.0
+	innerW := 1.0 + barW + 1.0 + gm + gridW + gm + 1.0
 	hasBottomLabel := suffix != nil || sanitized != nil
 	bottomRegion := gm
 	if hasBottomLabel {
 		bottomRegion = nucleusH + gm
 	}
-	boundingH := 1.0 + gm + nucleusH + gridH + bottomRegion + 1.0
+	innerH := 1.0 + gm + nucleusH + gridH + bottomRegion + 1.0
+	boundingW := innerW + 2.0*MARGIN
+	boundingH := innerH + 2.0*MARGIN
 
-	gridLeft := 1.0 + barW + 1.0 + gm
-	gridTop := 1.0 + gm + nucleusH
+	gridLeft := MARGIN + 1.0 + barW + 1.0 + gm
+	gridTop := MARGIN + 1.0 + gm + nucleusH
 	gridRight := gridLeft + gridW
 	gridBottom := gridTop + gridH
 
@@ -298,8 +301,8 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 
 	// bounding white background
 	s.WriteString(fmt.Sprintf(
-		"<rect x=\"0\" y=\"0\" width=\"%s\" height=\"%s\" fill=\"#ffffff\"/>",
-		n(boundingW), n(boundingH),
+		"<rect x=\"%s\" y=\"%s\" width=\"%s\" height=\"%s\" fill=\"#ffffff\"/>",
+		n(MARGIN), n(MARGIN), n(boundingW-2.0*MARGIN), n(boundingH-2.0*MARGIN),
 	))
 
 	// grid channel
@@ -568,11 +571,11 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 			n(x1), n(y1), n(x2), n(y2),
 		))
 	}
-	bl(0.0, 0.5, boundingW, 0.5)
-	bl(boundingW-0.5, 0.0, boundingW-0.5, boundingH)
-	bl(0.0, boundingH-0.5, boundingW, boundingH-0.5)
-	bl(0.5, 0.0, 0.5, boundingH)
-	bl(1.0+barW+0.5, 0.0, 1.0+barW+0.5, boundingH)
+	bl(MARGIN, MARGIN+0.5, boundingW-MARGIN, MARGIN+0.5)
+	bl(boundingW-MARGIN-0.5, MARGIN, boundingW-MARGIN-0.5, boundingH-MARGIN)
+	bl(MARGIN, boundingH-MARGIN-0.5, boundingW-MARGIN, boundingH-MARGIN-0.5)
+	bl(MARGIN+0.5, MARGIN, MARGIN+0.5, boundingH-MARGIN)
+	bl(MARGIN+1.0+barW+0.5, MARGIN, MARGIN+1.0+barW+0.5, boundingH-MARGIN)
 
 	s.WriteString("</svg>")
 	return s.String(), nil
@@ -727,9 +730,9 @@ func firstAppearance(digest *[64]byte) [4]int {
 }
 
 func drawColorBar(s *strings.Builder, digest, second *[64]byte, style VisualStyle, barW, boundingH, cellTextPx float64) {
-	barLeft := 1.0
-	barTop := 1.0
-	barHeight := boundingH - 2.0
+	barLeft := MARGIN + 1.0
+	barTop := MARGIN + 1.0
+	barHeight := boundingH - 2.0*MARGIN - 2.0
 	counts := twoBitCounts(*digest)
 	edge := style.EdgeColors
 	order := firstAppearance(digest)
