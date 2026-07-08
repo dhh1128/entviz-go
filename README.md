@@ -66,6 +66,18 @@ ratio 0.01–100), notes that are not printable ASCII (U+0020–U+007E) or longe
 than 10 characters, and Ethereum addresses whose EIP-55 mixed-case checksum is
 invalid (the error names the first mismatched-case position).
 
+`Characterize` returns the structured [entropy characterization](https://dhh1128.github.io/entviz/integration-guide/#the-characterization-model)
+— the same eight fields entviz emits as `data-*` attributes on the rendered SVG:
+
+```go
+ch, err := entviz.Characterize("550e8400-e29b-41d4-a716-446655440000")
+// ch.Scheme -> *"uuid", ch.Role -> *"identifier", ch.SizeBits -> 128
+// ch.QualifiersJSON() / ch.PartsJSON() give the compact-JSON forms.
+```
+
+For embedding entviz across all five languages, see the
+[Developer Integration Guide](https://dhh1128.github.io/entviz/integration-guide/).
+
 ## Build + test
 
 ```sh
