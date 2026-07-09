@@ -19,11 +19,11 @@ import (
 )
 
 // SpecVersion is the entviz spec level this library implements.
-const SpecVersion = "v13"
+const SpecVersion = "v14"
 
 // LibVersion is this Go module's own version stamp. It is per-impl and is not
 // compared by the conformance checker (only data-entviz-version is).
-const LibVersion = "0.13.0"
+const LibVersion = "0.14.0"
 
 // Alphabet describes a character set and its tokenization density.
 type Alphabet struct {

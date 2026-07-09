@@ -17,6 +17,7 @@ package entviz
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"strings"
 )
@@ -387,6 +388,220 @@ func partsFromParsed(p *Parsed) []Part {
 		parts = append(parts, Part{Text: *p.Suffix, Bind: "none"})
 	}
 	return parts
+}
+
+// ---------------------------------------------------------------------------
+// Label projection (spec v14).
+//
+// The visible top/bottom label strips are a PURE PROJECTION of the eight
+// characterization fields through one grammar — no per-parser string fusing.
+// Every implementation renders the same strips by running this same function
+// over the shared fields. Port of render_label in src/entviz/characterize.py.
+//
+//	top    = [fingerprint of ]PRIMARY[, MOD]...[, SIZE]
+//	bottom = ...<suffix>[ (<note>)]
+//
+// Slot separator is ", " (comma-space); no trailing ':' or '...'.
+// ---------------------------------------------------------------------------
+
+// truncMarker is the loud dark-red prefix prepended to the top label for
+// >512-bit truncated inputs; the renderer splits it back out to style it.
+const truncMarker = "fingerprint of "
+
+// encodingPrimary maps a bare-encoding name to its PRIMARY display short-name
+// (base64->b64, base64url->b64url); other alphabet names show verbatim.
+func encodingPrimary(enc string) string {
+	switch enc {
+	case "base64":
+		return "b64"
+	case "base64url":
+		return "b64url"
+	}
+	return enc
+}
+
+// schemePrimary maps the lowercase characterization scheme to its display
+// short-name for non-self-describing schemes. Self-describing prefix schemes
+// (did/urn/gitoid/swhid) and cid are handled directly in labelPrimary.
+func schemePrimary(scheme string) string {
+	switch scheme {
+	case "eth":
+		return "ETH"
+	case "btc":
+		return "BTC"
+	case "ltc":
+		return "LTC"
+	case "bch":
+		return "BCH"
+	case "ada":
+		return "ADA"
+	case "xrp":
+		return "XRP"
+	case "stellar":
+		return "XLM"
+	case "eos":
+		return "EOS"
+	case "uuid":
+		return "UUID"
+	case "ulid":
+		return "ULID"
+	case "lei":
+		return "LEI"
+	case "snowflake":
+		return "snowflake"
+	case "ssh":
+		return "SSH"
+	case "cesr":
+		return "CESR"
+	case "bech32":
+		return "bech32"
+	case "multihash":
+		return "multihash"
+	}
+	return scheme
+}
+
+func isBlockchainScheme(scheme string) bool {
+	switch scheme {
+	case "btc", "ltc", "bch", "ada", "eth", "xrp", "stellar", "eos", "bech32":
+		return true
+	}
+	return false
+}
+
+func qStr(q *OrderedMap, key string) string {
+	if q == nil {
+		return ""
+	}
+	v := q.Get(key)
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// labelPrimary computes the PRIMARY slot: the always-present head of the top
+// label.
+func (c *Characterization) labelPrimary() string {
+	q := c.Qualifiers
+	if c.Scheme == nil {
+		if c.SizeBasis == "utf8" {
+			return "text"
+		}
+		return encodingPrimary(c.Encoding)
+	}
+	scheme := *c.Scheme
+	switch scheme {
+	case "did":
+		return "did:" + qStr(q, "method")
+	case "urn":
+		return "urn:" + qStr(q, "nid")
+	case "gitoid":
+		return "gitoid:" + qStr(q, "object") + ":" + qStr(q, "algorithm")
+	case "swhid":
+		return "swh:1:" + qStr(q, "object")
+	case "cid":
+		if q != nil {
+			if v, ok := q.Get("version").(int); ok && v == 0 {
+				return "CIDv0"
+			}
+		}
+		return "CIDv1"
+	}
+	return schemePrimary(scheme)
+}
+
+// labelMods computes the MOD slots (zero or more): silent-default /
+// loud-departure facets.
+func (c *Characterization) labelMods() []string {
+	q := c.Qualifiers
+	if c.Scheme == nil {
+		return nil
+	}
+	scheme := *c.Scheme
+	var mods []string
+	switch {
+	case scheme == "cesr":
+		algo := qStr(q, "algorithm")
+		algo = strings.TrimSuffix(algo, " pubkey")
+		if algo != "" {
+			mods = append(mods, algo)
+		}
+	case scheme == "ssh":
+		if algo := qStr(q, "algorithm"); algo != "" {
+			mods = append(mods, algo)
+		}
+	case scheme == "cid":
+		isV0 := false
+		if q != nil {
+			if v, ok := q.Get("version").(int); ok && v == 0 {
+				isV0 = true
+			}
+		}
+		if !isV0 {
+			if codec := qStr(q, "codec"); codec != "" {
+				mods = append(mods, codec)
+			}
+			if hash := qStr(q, "hash"); hash != "" && hash != "sha2-256" {
+				mods = append(mods, hash)
+			}
+		}
+	case scheme == "multihash":
+		if hash := qStr(q, "hash"); hash != "" && hash != "sha2-256" {
+			mods = append(mods, hash)
+		}
+	case isBlockchainScheme(scheme):
+		if network := qStr(q, "network"); network != "" && network != "mainnet" {
+			mods = append(mods, network)
+		}
+	}
+	return mods
+}
+
+// labelSize computes the SIZE slot (or "" when omitted).
+func (c *Characterization) labelSize() string {
+	if c.Scheme == nil {
+		if c.SizeBasis == "utf8" {
+			return fmt.Sprintf("%d-byte", c.SizeBits/8)
+		}
+		return fmt.Sprintf("%d-bit", c.SizeBits)
+	}
+	if *c.Scheme == "ssh" || *c.Scheme == "multihash" {
+		return fmt.Sprintf("%d-bit", c.SizeBits)
+	}
+	return ""
+}
+
+// RenderLabel projects the characterization into the (top, bottom) label
+// strips (spec v14). Pure function of the eight fields plus presentation facts
+// the fields don't carry: whether the input was >512-bit truncated, the bound
+// suffix checksum, and the out-of-band user note.
+//
+// top = [fingerprint of ]PRIMARY[, MOD]...[, SIZE] (", " joined, no trailing
+// ':'/'...'). bottom = ...<suffix> then " (<note>)", "" when neither present.
+func (c *Characterization) RenderLabel(truncated bool, suffix, note string) (string, string) {
+	slots := []string{c.labelPrimary()}
+	slots = append(slots, c.labelMods()...)
+	if size := c.labelSize(); size != "" {
+		slots = append(slots, size)
+	}
+	top := strings.Join(slots, ", ")
+	if truncated {
+		top = truncMarker + top
+	}
+
+	bottom := ""
+	if suffix != "" {
+		bottom = "..." + suffix
+	}
+	if note != "" {
+		if bottom != "" {
+			bottom = bottom + " (" + note + ")"
+		} else {
+			bottom = "(" + note + ")"
+		}
+	}
+	return top, bottom
 }
 
 // Characterize characterizes an entropy string into the structured model

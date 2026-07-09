@@ -265,3 +265,97 @@ func TestUrnComponentsDropped(t *testing.T) {
 	// r-/q-/f-components end the NSS at the first '?' or '#'.
 	assertDidUrn(t, "urn:example:weather?=op=map&lat=39#frag", "urn:example:", "weather")
 }
+
+// ---------------------------------------------------------------------------
+// v14: checksum verification (base58check / bech32 / CashAddr / LEI) rejects a
+// structurally-matching address whose bound checksum does not verify, while a
+// valid address of the same scheme still parses. Mirrors the entviz corpus
+// error vectors and the reference Base58CheckError/Bech32ChecksumError/
+// LEIChecksumError behavior.
+// ---------------------------------------------------------------------------
+
+func TestV14ChecksumRejection(t *testing.T) {
+	bad := []struct{ scheme, in string }{
+		{"BTC legacy (base58check)", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb"},
+		{"BTC segwit (bech32)", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5"},
+		{"LTC (bech32)", "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n8"},
+		{"cosmos (bech32)", "cosmos1qqqsyqcyq5rqwzqfpg9scrgwpugpzysnrk363f"},
+		{"BCH (CashAddr)", "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6q"},
+		{"LEI (MOD 97-10)", "5493001KJTIIGC8Y1R13"},
+	}
+	for _, b := range bad {
+		p, err := Parse(b.in)
+		if err == nil {
+			t.Errorf("%s: Parse(%q) accepted, want checksum rejection (parsed=%v)", b.scheme, b.in, p)
+			continue
+		}
+		var ce *ChecksumError
+		if !errors.As(err, &ce) {
+			t.Errorf("%s: Parse(%q) err = %v (%T), want *ChecksumError", b.scheme, b.in, err, err)
+		}
+	}
+}
+
+func TestV14ChecksumAcceptance(t *testing.T) {
+	good := []struct{ scheme, in string }{
+		{"BTC legacy", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"},
+		{"cosmos", "cosmos1qqqsyqcyq5rqwzqfpg9scrgwpugpzysnrk363e"},
+		{"BCH", "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a"},
+		{"LEI", "5493001KJTIIGC8Y1R12"},
+	}
+	for _, g := range good {
+		if _, err := Parse(g.in); err != nil {
+			t.Errorf("%s: Parse(%q) rejected a valid address: %v", g.scheme, g.in, err)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// v14: the top/bottom label strips are a pure projection of the
+// characterization through RenderLabel (PRIMARY[, MOD]...[, SIZE]), matching
+// the before->after table in reviews/v14-label-redesign.md.
+// ---------------------------------------------------------------------------
+
+func TestV14RenderLabelProjection(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"BKxy2sgzfplyr_tgwIxS19f2OchFHtLwPWD3v4oYimBx", "CESR, Ed25519 nt"},
+		{"DKxy2sgzfplyr_tgwIxS19f2OchFHtLwPWD3v4oYimBx", "CESR, Ed25519"},
+		{"EBfdlu8R27Fbx_ehrqwImnK_8Cm79sqbAQ4caaZG_LFv", "CESR, Blake3-256"},
+		{"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "hex, 256-bit"},
+		{"did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK", "did:key"},
+		{"bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi", "CIDv1, dag-pb"},
+		{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtJVH9hM+2DyhmgRZBfeIDoVqCTbXY+0nKlS5pTkkXY", "SSH, ed25519, 264-bit"},
+	}
+	for _, c := range cases {
+		ch, err := Characterize(c.in)
+		if err != nil {
+			t.Errorf("Characterize(%q) errored: %v", c.in, err)
+			continue
+		}
+		top, _ := ch.RenderLabel(false, "", "")
+		if top != c.want {
+			t.Errorf("RenderLabel top for %q = %q, want %q", c.in, top, c.want)
+		}
+	}
+}
+
+func TestV14RenderLabelTruncationMarker(t *testing.T) {
+	ch, err := Characterize("Hello World")
+	if err != nil {
+		t.Fatalf("Characterize errored: %v", err)
+	}
+	top, bottom := ch.RenderLabel(true, "", "")
+	if top != "fingerprint of text, 11-byte" {
+		t.Errorf("truncated top = %q", top)
+	}
+	if bottom != "" {
+		t.Errorf("bottom = %q, want empty", bottom)
+	}
+	top2, bottom2 := ch.RenderLabel(false, "abcd", "hi")
+	if top2 != "text, 11-byte" {
+		t.Errorf("top2 = %q", top2)
+	}
+	if bottom2 != "...abcd (hi)" {
+		t.Errorf("bottom2 = %q, want '...abcd (hi)'", bottom2)
+	}
+}

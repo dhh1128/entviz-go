@@ -134,30 +134,24 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 		return "", perr
 	}
 
-	var core, typeName string
+	// v14: the top label no longer fuses parsed.TypeName; it is projected from
+	// the characterization by render_label. We keep only the parser fields the
+	// pipeline still needs (core/alphabet for tokenization, prefix for the
+	// prefix-fold fingerprint, suffix for the bottom strip).
+	var core string
 	var alphabet Alphabet
 	var prefix, suffix *string
 	prefixSemantic := false
 
 	if parsed == nil {
 		core = b64urlEncode([]byte(rawInput))
-		typeName = fmt.Sprintf("txt(%d)->b64url", utf8.RuneCountInString(rawInput))
 		alphabet = BASE64URL
 	} else {
 		core = parsed.Core
-		typeName = parsed.TypeName
 		alphabet = parsed.Alphabet
 		prefix = parsed.Prefix
 		suffix = parsed.Suffix
 		prefixSemantic = parsed.PrefixSemantic
-		switch typeName {
-		case "hex":
-			typeName = fmt.Sprintf("hex(%d)", utf8.RuneCountInString(core))
-		case "base64":
-			typeName = fmt.Sprintf("b64(%d)", utf8.RuneCountInString(core))
-		case "base64url":
-			typeName = fmt.Sprintf("b64url(%d)", utf8.RuneCountInString(core))
-		}
 	}
 
 	tokens, isTruncated := TokenizeEntropy(core, alphabet)
@@ -573,9 +567,12 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	second := SecondDigest(core)
 	drawColorBar(&s, &primary, &second, style, barW, boundingH, cellTextPx)
 
-	// labels
+	// labels — v14: the top strip is a pure projection of the characterization
+	// through render_label (PRIMARY[, MOD]...[, SIZE]); the bottom strip is the
+	// bound (now-verified) suffix checksum and the user note.
+	topLabel, _ := ch.RenderLabel(isTruncated, "", "")
 	drawLabelStrips(&s, gridLeft, gridRight, gridTop, gridBottom, nucleusH,
-		typeName, prefix, suffix, labelTextPx, truncatedBytes, sanitized)
+		topLabel, suffix, labelTextPx, truncatedBytes, sanitized)
 
 	// borders
 	bl := func(x1, y1, x2, y2 float64) {
@@ -872,21 +869,19 @@ func drawColorBar(s *strings.Builder, digest, second *[64]byte, style VisualStyl
 	s.WriteString("</g>")
 }
 
+// drawLabelStrips renders the top and bottom label strips (spec v14). topText
+// is the render_label projection of the characterization; when the input was
+// >512-bit truncated it begins with the loud "fingerprint of " marker, which
+// is split back out and rendered as a bold dark-red <tspan> so the flat text
+// still carries the marker (the conformance top-label text content matches
+// render_label's output exactly).
 func drawLabelStrips(s *strings.Builder, gridLeft, gridRight, gridTop, gridBottom, nucleusH float64,
-	typeName string, prefix, suffix *string, textPx float64, truncatedBytes int, note *string) {
+	topText string, suffix *string, textPx float64, truncatedBytes int, note *string) {
 	fontSizeAttr := fmt.Sprintf("font-size=\"%s\"", n(textPx))
-	var restText string
-	if typeName != "" {
-		restText = typeName + ":"
-		if prefix != nil {
-			restText += " " + *prefix + "..."
-		}
-	} else if prefix != nil {
-		restText = *prefix + "..."
-	}
 	topCy := gridTop - nucleusH/2.0
 	s.WriteString("<g data-channel=\"label-top\">")
-	if truncatedBytes >= 0 {
+	if truncatedBytes >= 0 && strings.HasPrefix(topText, truncMarker) {
+		restText := topText[len(truncMarker):]
 		s.WriteString(fmt.Sprintf(
 			"<text x=\"%s\" y=\"%s\" fill=\"#666666\" %s dominant-baseline=\"central\"><tspan fill=\"#a00000\" font-weight=\"bold\">fingerprint of </tspan>%s</text>",
 			n(gridLeft), n(topCy), fontSizeAttr, escText(restText),
@@ -894,7 +889,7 @@ func drawLabelStrips(s *strings.Builder, gridLeft, gridRight, gridTop, gridBotto
 	} else {
 		s.WriteString(fmt.Sprintf(
 			"<text x=\"%s\" y=\"%s\" fill=\"#666666\" %s dominant-baseline=\"central\">%s</text>",
-			n(gridLeft), n(topCy), fontSizeAttr, escText(restText),
+			n(gridLeft), n(topCy), fontSizeAttr, escText(topText),
 		))
 	}
 	s.WriteString("</g>")
