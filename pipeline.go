@@ -21,6 +21,11 @@ const (
 	MARGIN              = 1.0
 	noteMaxLen          = 10
 	maxInputChars       = 65536
+	// labelAdvanceEm is the fixed monospace advance (em) used to size the top
+	// strip's character budget for prefix truncation (v15). A spec constant —
+	// NOT the renderer's real font metric — so all implementations compute the
+	// same integer budget and the Tier-A label string is reproducible.
+	labelAdvanceEm = 0.6
 	monospaceFontFamily = "\"JetBrains Mono\", \"Menlo\", \"Consolas\", \"DejaVu Sans Mono\", \"Liberation Mono\", \"Roboto Mono\", \"Noto Sans Mono\", monospace"
 )
 
@@ -570,7 +575,15 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	// labels — v14: the top strip is a pure projection of the characterization
 	// through render_label (PRIMARY[, MOD]...[, SIZE]); the bottom strip is the
 	// bound (now-verified) suffix checksum and the user note.
-	topLabel, _ := ch.RenderLabel(isTruncated, "", "")
+	// v15: the top strip gains a trailing slot echoing the stripped front prefix
+	// (0x, bc1, cosmos1, the SSH header, …). The prefix is the only elastic
+	// element and is truncated to the character budget the grid leaves on the
+	// label line: lineChars = floor(gridW / (labelTextPx * labelAdvanceEm)).
+	// labelAdvanceEm is a fixed spec constant (NOT the renderer's real font
+	// metric) so every implementation truncates identically and the Tier-A label
+	// string is reproducible.
+	labelLineChars := int(gridW / (labelTextPx * labelAdvanceEm))
+	topLabel, _ := ch.RenderLabel(isTruncated, "", "", labelLineChars)
 	drawLabelStrips(&s, gridLeft, gridRight, gridTop, gridBottom, nucleusH,
 		topLabel, suffix, labelTextPx, truncatedBytes, sanitized)
 
@@ -869,9 +882,9 @@ func drawColorBar(s *strings.Builder, digest, second *[64]byte, style VisualStyl
 	s.WriteString("</g>")
 }
 
-// drawLabelStrips renders the top and bottom label strips (spec v14). topText
+// drawLabelStrips renders the top and bottom label strips (spec v15). topText
 // is the render_label projection of the characterization; when the input was
-// >512-bit truncated it begins with the loud "fingerprint of " marker, which
+// >512-bit truncated it begins with the loud "+hash " marker, which
 // is split back out and rendered as a bold dark-red <tspan> so the flat text
 // still carries the marker (the conformance top-label text content matches
 // render_label's output exactly).
@@ -883,7 +896,7 @@ func drawLabelStrips(s *strings.Builder, gridLeft, gridRight, gridTop, gridBotto
 	if truncatedBytes >= 0 && strings.HasPrefix(topText, truncMarker) {
 		restText := topText[len(truncMarker):]
 		s.WriteString(fmt.Sprintf(
-			"<text x=\"%s\" y=\"%s\" fill=\"#666666\" %s dominant-baseline=\"central\"><tspan fill=\"#a00000\" font-weight=\"bold\">fingerprint of </tspan>%s</text>",
+			"<text x=\"%s\" y=\"%s\" fill=\"#666666\" %s dominant-baseline=\"central\"><tspan fill=\"#a00000\" font-weight=\"bold\">"+truncMarker+"</tspan>%s</text>",
 			n(gridLeft), n(topCy), fontSizeAttr, escText(restText),
 		))
 	} else {

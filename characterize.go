@@ -391,22 +391,34 @@ func partsFromParsed(p *Parsed) []Part {
 }
 
 // ---------------------------------------------------------------------------
-// Label projection (spec v14).
+// Label projection (spec v15).
 //
 // The visible top/bottom label strips are a PURE PROJECTION of the eight
 // characterization fields through one grammar — no per-parser string fusing.
 // Every implementation renders the same strips by running this same function
 // over the shared fields. Port of render_label in src/entviz/characterize.py.
 //
-//	top    = [fingerprint of ]PRIMARY[, MOD]...[, SIZE]
+//	top    = [+hash ]PRIMARY[, MOD]...[, SIZE][, PREFIX]
 //	bottom = ...<suffix>[ (<note>)]
 //
-// Slot separator is ", " (comma-space); no trailing ':' or '...'.
+// Slot separator is ", " (comma-space); no trailing ':'. The trailing PREFIX
+// slot (v15) echoes a bind="none" front prefix that was stripped from the
+// visualized core; it is the only elastic slot and may end in "...".
 // ---------------------------------------------------------------------------
 
 // truncMarker is the loud dark-red prefix prepended to the top label for
-// >512-bit truncated inputs; the renderer splits it back out to style it.
-const truncMarker = "fingerprint of "
+// >512-bit truncated inputs (v15: "+hash ", terser than v14's "fingerprint of ").
+// The renderer splits it back out to style it as a bold dark-red tspan.
+const truncMarker = "+hash "
+
+// prefixEllipsis is the ASCII elision marker for a truncated prefix slot (no
+// Unicode ellipsis, matching the bottom strip's "...<suffix>" convention).
+const prefixEllipsis = "..."
+
+// prefixMinHead is the minimum number of LEADING prefix characters kept when the
+// prefix is truncated, so a big prefix on a tight line (only SSH's structural
+// header) shows a few head chars rather than collapsing to a bare "...".
+const prefixMinHead = 4
 
 // encodingPrimary maps a bare-encoding name to its PRIMARY display short-name
 // (base64->b64, base64url->b64url); other alphabet names show verbatim.
@@ -529,7 +541,10 @@ func (c *Characterization) labelMods() []string {
 		}
 	case scheme == "ssh":
 		if algo := qStr(q, "algorithm"); algo != "" {
-			mods = append(mods, algo)
+			// v15: shorten the ECDSA curve to its common short name for the
+			// label — "ecdsa-nistp256" -> "ecdsa-p256". The data-qualifiers
+			// `algorithm` field keeps the faithful SSH curve id.
+			mods = append(mods, strings.ReplaceAll(algo, "nistp", "p"))
 		}
 	case scheme == "cid":
 		isV0 := false
@@ -572,19 +587,67 @@ func (c *Characterization) labelSize() string {
 	return ""
 }
 
+// strippedPrefix returns the literal front prefix that was stripped from the
+// visualized core (a leading bind="none" part: 0x, bc1, cosmos1, Stellar G, the
+// SSH structural header, …), or "" if there is none. A bind="fold" prefix
+// (did/urn/gitoid/swhid) is already the PRIMARY slot, and a bind="core" leading
+// part is not a stripped prefix, so neither returns a value here.
+func (c *Characterization) strippedPrefix() string {
+	if len(c.Parts) > 0 && c.Parts[0].Bind == "none" {
+		return c.Parts[0].Text
+	}
+	return ""
+}
+
+// fitPrefix truncates the literal prefix slot to avail characters with a
+// trailing "..." elision marker. The prefix is the sole elastic label element
+// (v15): PRIMARY/MOD/SIZE never truncate. When the prefix does not fit it is cut
+// to <head> + "...", the head length floored at prefixMinHead so a long prefix
+// on a tight line still shows a few leading characters.
+func fitPrefix(prefix string, avail int) string {
+	r := []rune(prefix)
+	if len(r) <= avail {
+		return prefix
+	}
+	keep := avail - len([]rune(prefixEllipsis))
+	if keep < prefixMinHead {
+		keep = prefixMinHead
+	}
+	return string(r[:keep]) + prefixEllipsis
+}
+
 // RenderLabel projects the characterization into the (top, bottom) label
-// strips (spec v14). Pure function of the eight fields plus presentation facts
+// strips (spec v15). Pure function of the eight fields plus presentation facts
 // the fields don't carry: whether the input was >512-bit truncated, the bound
-// suffix checksum, and the out-of-band user note.
+// suffix checksum, the out-of-band user note, and the monospace lineChars budget
+// the grid leaves for the top strip (used only to truncate the elastic prefix
+// slot; lineChars < 0 = do not truncate).
 //
-// top = [fingerprint of ]PRIMARY[, MOD]...[, SIZE] (", " joined, no trailing
-// ':'/'...'). bottom = ...<suffix> then " (<note>)", "" when neither present.
-func (c *Characterization) RenderLabel(truncated bool, suffix, note string) (string, string) {
+// top = [+hash ]PRIMARY[, MOD]...[, SIZE][, PREFIX] (", " joined, no trailing
+// ':'). bottom = ...<suffix> then " (<note>)", "" when neither present.
+func (c *Characterization) RenderLabel(truncated bool, suffix, note string, lineChars int) (string, string) {
 	slots := []string{c.labelPrimary()}
 	slots = append(slots, c.labelMods()...)
 	if size := c.labelSize(); size != "" {
 		slots = append(slots, size)
 	}
+
+	if prefix := c.strippedPrefix(); prefix != "" {
+		if lineChars >= 0 {
+			// Budget left for the prefix = the line budget minus the marker and
+			// the fixed PRIMARY/MOD/SIZE core (which never truncate) and the
+			// ", " that joins the prefix slot.
+			markerLen := 0
+			if truncated {
+				markerLen = len([]rune(truncMarker))
+			}
+			coreLen := len([]rune(strings.Join(slots, ", ")))
+			avail := lineChars - markerLen - coreLen - len([]rune(", "))
+			prefix = fitPrefix(prefix, avail)
+		}
+		slots = append(slots, prefix)
+	}
+
 	top := strings.Join(slots, ", ")
 	if truncated {
 		top = truncMarker + top

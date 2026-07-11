@@ -3,13 +3,13 @@
 [![CI](https://github.com/dhh1128/entviz-go/actions/workflows/ci.yml/badge.svg)](https://github.com/dhh1128/entviz-go/actions/workflows/ci.yml)
 [![Release](https://github.com/dhh1128/entviz-go/actions/workflows/release.yml/badge.svg)](https://github.com/dhh1128/entviz-go/actions/workflows/release.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dhh1128/entviz-go.svg)](https://pkg.go.dev/github.com/dhh1128/entviz-go)
-[![Spec](https://img.shields.io/badge/entviz%20spec-v10-informational)](https://github.com/dhh1128/entviz)
+[![Spec](https://img.shields.io/badge/entviz%20spec-v15-informational)](https://github.com/dhh1128/entviz)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Go implementation of [entviz](https://github.com/dhh1128/entviz) (spec **v10**)
+Go implementation of [entviz](https://github.com/dhh1128/entviz) (spec **v15**)
 — visualize high-entropy values as comparable SVG diagrams.
 
-## Status: certified against the v10 conformance corpus ✅
+## Status: certified against the v15 conformance corpus ✅
 
 A full, self-contained implementation that passes the shared conformance corpus
 at **Tier A** (render model) **+ Tier B** (canonical raster) for every render
