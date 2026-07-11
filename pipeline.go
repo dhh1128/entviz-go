@@ -17,15 +17,15 @@ import (
 )
 
 const (
-	dpi                 = 96.0
-	MARGIN              = 1.0
-	noteMaxLen          = 10
-	maxInputChars       = 65536
+	dpi           = 96.0
+	MARGIN        = 1.0
+	noteMaxLen    = 10
+	maxInputChars = 65536
 	// labelAdvanceEm is the fixed monospace advance (em) used to size the top
 	// strip's character budget for prefix truncation (v15). A spec constant —
 	// NOT the renderer's real font metric — so all implementations compute the
 	// same integer budget and the Tier-A label string is reproducible.
-	labelAdvanceEm = 0.6
+	labelAdvanceEm      = 0.6
 	monospaceFontFamily = "\"JetBrains Mono\", \"Menlo\", \"Consolas\", \"DejaVu Sans Mono\", \"Liberation Mono\", \"Roboto Mono\", \"Noto Sans Mono\", monospace"
 )
 
