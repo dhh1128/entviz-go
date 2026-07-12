@@ -1,6 +1,6 @@
 package entviz
 
-// Entropy characterization model (spec v13).
+// Entropy characterization model.
 //
 // Port of src/entviz/characterize.py. The parser (entropy.go) produces a Parsed
 // display record whose TypeName string fuses several orthogonal facts (scheme,
@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-// Closed role enum (spec v13). Nothing outside this set may appear.
+// Closed role enum. Nothing outside this set may appear.
 const (
 	roleKey        = "key"
 	roleSignature  = "signature"
@@ -391,7 +391,7 @@ func partsFromParsed(p *Parsed) []Part {
 }
 
 // ---------------------------------------------------------------------------
-// Label projection (spec v15).
+// Label projection.
 //
 // The visible top/bottom label strips are a PURE PROJECTION of the eight
 // characterization fields through one grammar — no per-parser string fusing.
@@ -402,7 +402,7 @@ func partsFromParsed(p *Parsed) []Part {
 //	bottom = ...<suffix>[ (<note>)]
 //
 // Slot separator is ", " (comma-space); no trailing ':'. The trailing PREFIX
-// slot (v15) echoes a bind="none" front prefix that was stripped from the
+// slot echoes a bind="none" front prefix that was stripped from the
 // visualized core; it is the only elastic slot and may end in "...".
 // ---------------------------------------------------------------------------
 
@@ -541,7 +541,7 @@ func (c *Characterization) labelMods() []string {
 		}
 	case scheme == "ssh":
 		if algo := qStr(q, "algorithm"); algo != "" {
-			// v15: shorten the ECDSA curve to its common short name for the
+			// Shorten the ECDSA curve to its common short name for the
 			// label — "ecdsa-nistp256" -> "ecdsa-p256". The data-qualifiers
 			// `algorithm` field keeps the faithful SSH curve id.
 			mods = append(mods, strings.ReplaceAll(algo, "nistp", "p"))
@@ -600,8 +600,8 @@ func (c *Characterization) strippedPrefix() string {
 }
 
 // fitPrefix truncates the literal prefix slot to avail characters with a
-// trailing "..." elision marker. The prefix is the sole elastic label element
-// (v15): PRIMARY/MOD/SIZE never truncate. When the prefix does not fit it is cut
+// trailing "..." elision marker. The prefix is the sole elastic label element:
+// PRIMARY/MOD/SIZE never truncate. When the prefix does not fit it is cut
 // to <head> + "...", the head length floored at prefixMinHead so a long prefix
 // on a tight line still shows a few leading characters.
 func fitPrefix(prefix string, avail int) string {
@@ -617,7 +617,7 @@ func fitPrefix(prefix string, avail int) string {
 }
 
 // RenderLabel projects the characterization into the (top, bottom) label
-// strips (spec v15). Pure function of the eight fields plus presentation facts
+// strips. Pure function of the eight fields plus presentation facts
 // the fields don't carry: whether the input was >512-bit truncated, the bound
 // suffix checksum, the out-of-band user note, and the monospace lineChars budget
 // the grid leaves for the top strip (used only to truncate the elastic prefix
@@ -667,8 +667,8 @@ func (c *Characterization) RenderLabel(truncated bool, suffix, note string, line
 	return top, bottom
 }
 
-// Characterize characterizes an entropy string into the structured model
-// (spec v13). Never errors for an in-range input: an unrecognized input falls
+// Characterize characterizes an entropy string into the structured model.
+// Never errors for an in-range input: an unrecognized input falls
 // back to the UTF-8 -> base64url path (scheme=nil, role=nil, size_basis="utf8",
 // size measured over the ORIGINAL input bytes). A hard parse rejection (EIP-55)
 // is surfaced via the error, matching Parse.

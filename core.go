@@ -1,6 +1,6 @@
-// Package entviz renders high-entropy values as comparable SVG fingerprints
-// (entviz, spec v10). It is a Go port of the certified reference
-// implementation; see https://github.com/dhh1128/entviz for the spec.
+// Package entviz renders high-entropy values as comparable SVG fingerprints.
+// It is a Go port of the certified reference implementation; see
+// https://github.com/dhh1128/entviz for the spec.
 //
 // The deterministic shared core lives here: alphabets, tokenization + 24-bit
 // quant extension, the SHA-512 fingerprint, ftok median/quartile selection, the

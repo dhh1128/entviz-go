@@ -63,7 +63,7 @@ func (e *Eip55Error) Error() string {
 	return "EIP-55 checksum mismatch"
 }
 
-// ChecksumError is a hard rejection (v14): a structure that clearly matches a
+// ChecksumError is a hard rejection: a structure that clearly matches a
 // scheme (right prefix / length / reserved bytes) but whose bound checksum —
 // surfaced in the label — does not verify. Covers base58check (BTC/LTC legacy),
 // bech32 (BTC segwit, LTC, generic cosmos), CashAddr (BCH), and LEI MOD 97-10.
@@ -367,7 +367,7 @@ func parseBitcoinAddress(text string) (*Parsed, error) {
 				suf := string(bchars[len(bchars)-4:])
 				midLen := utf8.RuneCountInString(mid)
 				if midLen >= 21 && midLen <= 30 {
-					// v14: the 4-byte double-SHA256 checksum is surfaced as the
+					// The 4-byte double-SHA256 checksum is surfaced as the
 					// suffix, so it MUST verify. A structural match with a bad
 					// checksum rejects.
 					if !base58checkOK(text) {
@@ -379,8 +379,8 @@ func parseBitcoinAddress(text string) (*Parsed, error) {
 		}
 	}
 	if prefix, body, ok := matchPrefixBech32(text, []string{"bc1", "tb1"}, 39, 69); ok {
-		// v14: Bitcoin SegWit uses bech32 (BIP-173); verify the polymod (the
-		// specific parser previously skipped it). The polymod HRP is the HRP
+		// Bitcoin SegWit uses bech32 (BIP-173); verify the polymod (an earlier
+		// revision of this parser skipped it). The polymod HRP is the HRP
 		// without the '1' separator.
 		lp := strings.ToLower(prefix)
 		lb := strings.ToLower(body)
@@ -504,7 +504,7 @@ func parseLitecoinAddress(text string) (*Parsed, error) {
 		if strings.HasPrefix(text, prefix) {
 			rest := text[len(prefix):]
 			if utf8.RuneCountInString(rest) == 33 && isBase58(rest) {
-				// v14: Litecoin legacy is base58check; verify the double-SHA256
+				// Litecoin legacy is base58check; verify the double-SHA256
 				// checksum — a bad checksum rejects.
 				if !base58checkOK(text) {
 					return nil, &ChecksumError{Kind: "Litecoin legacy", Address: text}
@@ -514,8 +514,8 @@ func parseLitecoinAddress(text string) (*Parsed, error) {
 		}
 	}
 	if prefix, body, ok := matchPrefixBech32(text, []string{"ltc1"}, 38, 68); ok {
-		// v14: modern "ltc1…" uses bech32; verify the polymod (previously
-		// skipped). The polymod HRP is "ltc" (strip the '1' separator).
+		// Modern "ltc1…" uses bech32; verify the polymod (an earlier revision
+		// skipped it). The polymod HRP is "ltc" (strip the '1' separator).
 		lp := strings.ToLower(prefix)
 		lb := strings.ToLower(body)
 		if c, ok2 := bech32ChecksumConst(strings.TrimSuffix(lp, "1"), lb); !ok2 || (c != 1 && c != 0x2bc830a3) {
@@ -548,7 +548,7 @@ func parseBitcoinCashAddress(text string) (*Parsed, error) {
 		if (first == 'p' || first == 'q' || first == 'P' || first == 'Q') && len(rchars) == 42 {
 			body := string(rchars[1:])
 			if isBech32Either(body) {
-				// v14: verify the 40-bit CashAddr BCH checksum (a DIFFERENT code
+				// Verify the 40-bit CashAddr BCH checksum (a DIFFERENT code
 				// from bech32's polymod). The checksum HRP is the prefix WITHOUT
 				// the colon, defaulting to "bitcoincash" for a bare q…/p… form.
 				// The payload (INCLUDING its 8 trailing checksum chars) is what
@@ -708,7 +708,7 @@ func parseLEI(text string) (*Parsed, error) {
 		return nil, nil
 	}
 	if !leiChecksumOK(upper) {
-		// v14: 20 base36 chars WITH the reserved "00" is an unambiguous LEI
+		// 20 base36 chars WITH the reserved "00" is an unambiguous LEI
 		// match and the MOD 97-10 check digits are the bound suffix — so a bad
 		// checksum REJECTS rather than falling through to a generic base36
 		// encoding (which would render an invalid LEI).
@@ -996,7 +996,7 @@ func parseBech32Address(text string) (*Parsed, error) {
 		}
 		// Structural match: <hrp>1<data> with a lowercase HRP and 8+ bech32
 		// data chars. Because neither HRP ([a-z]) nor data (bech32 charset)
-		// can contain '1', this is the unique valid split. v14: the 6-char
+		// can contain '1', this is the unique valid split. The 6-char
 		// checksum is surfaced as the bound suffix, so an invalid polymod
 		// REJECTS rather than falling through to a bare bech32 encoding.
 		c, ok := bech32ChecksumConst(hrp, data)
@@ -1332,8 +1332,8 @@ func crockford5(value uint32) string {
 	return strings.ToLower(string(out))
 }
 
-// TokenizeEntropy tokenizes entropy with v6+ large-input handling. It returns
-// (tokens, truncated).
+// TokenizeEntropy tokenizes entropy with head/middle/tail large-input handling.
+// It returns (tokens, truncated).
 func TokenizeEntropy(core string, alphabet Alphabet) ([]Token, bool) {
 	tokenLen := int(24 / alphabet.BitsPerChar)
 	nBytes := coreByteLength(core, alphabet)

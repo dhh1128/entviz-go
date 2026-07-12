@@ -268,7 +268,7 @@ func TestUrnComponentsDropped(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// v14: checksum verification (base58check / bech32 / CashAddr / LEI) rejects a
+// Checksum verification (base58check / bech32 / CashAddr / LEI) rejects a
 // structurally-matching address whose bound checksum does not verify, while a
 // valid address of the same scheme still parses. Mirrors the entviz corpus
 // error vectors and the reference Base58CheckError/Bech32ChecksumError/
@@ -312,8 +312,8 @@ func TestV14ChecksumAcceptance(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// v15: the top/bottom label strips are a pure projection of the
-// characterization through RenderLabel, now with a trailing PREFIX slot:
+// The top/bottom label strips are a pure projection of the
+// characterization through RenderLabel, with a trailing PREFIX slot:
 // [+hash ]PRIMARY[, MOD]...[, SIZE][, PREFIX]. These cases use lineChars=-1
 // (no truncation), so the full stripped prefix (SSH header, CID base) shows.
 // ---------------------------------------------------------------------------

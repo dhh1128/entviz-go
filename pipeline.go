@@ -1,6 +1,6 @@
 package entviz
 
-// Full render pipeline: entropy string -> SVG string (spec v10).
+// Full render pipeline: entropy string -> SVG string.
 //
 // Faithful port of entviz-rs/src/pipeline.rs (itself a port of pipeline.py +
 // renderer.py + shapes.py). Produces an SVG whose normative data-* attributes
@@ -22,7 +22,7 @@ const (
 	noteMaxLen    = 10
 	maxInputChars = 65536
 	// labelAdvanceEm is the fixed monospace advance (em) used to size the top
-	// strip's character budget for prefix truncation (v15). A spec constant —
+	// strip's character budget for prefix truncation. A spec constant —
 	// NOT the renderer's real font metric — so all implementations compute the
 	// same integer budget and the Tier-A label string is reproducible.
 	labelAdvanceEm      = 0.6
@@ -139,7 +139,7 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 		return "", perr
 	}
 
-	// v14: the top label no longer fuses parsed.TypeName; it is projected from
+	// The top label does not fuse parsed.TypeName; it is projected from
 	// the characterization by render_label. We keep only the parser fields the
 	// pipeline still needs (core/alphabet for tokenization, prefix for the
 	// prefix-fold fingerprint, suffix for the bottom strip).
@@ -224,7 +224,9 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 		usedCells[ci] = true
 	}
 
-	// --- per-cell text sizes ---
+	// --- cell text sizes (keyed on the input alphabet, applied to every
+	// cell of it including a short final token; the Crockford middle cells
+	// are sized from their own 5-char alphabet below) ---
 	var cellTextPt float64
 	if alphabet.BitsPerChar == 4 {
 		cellTextPt = math.RoundToEven(fontSizePt * 0.75)
@@ -235,7 +237,7 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	labelTextPx := math.RoundToEven(fontSizePt*0.75) * dpi / 72.0
 	fpMiddleTextPx := math.RoundToEven(fontSizePt*0.80) * dpi / 72.0
 
-	// --- fingerprint-edge cells (v10) ---
+	// --- fingerprint-edge cells ---
 	fpEdgeCells := map[int]bool{}
 	if usedCells[0] {
 		fpEdgeCells[0] = true
@@ -277,7 +279,7 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 		truncAttr = " data-truncated=\"true\""
 	}
 
-	// Entropy characterization (spec v13): eight reporting-only fields emitted
+	// Entropy characterization: eight reporting-only fields emitted
 	// as data-* attributes on the root <svg>. These add no ink (the closed
 	// profile permits extra data-*), so the golden raster is unaffected. Parse
 	// already succeeded above, so Characterize does not error here.
@@ -572,10 +574,10 @@ func Render(entropyText string, targetAR, fontSizePt float64, note *string) (str
 	second := SecondDigest(core)
 	drawColorBar(&s, &primary, &second, style, barW, boundingH, cellTextPx)
 
-	// labels — v14: the top strip is a pure projection of the characterization
-	// through render_label (PRIMARY[, MOD]...[, SIZE]); the bottom strip is the
-	// bound (now-verified) suffix checksum and the user note.
-	// v15: the top strip gains a trailing slot echoing the stripped front prefix
+	// labels — the top strip is a pure projection of the characterization
+	// through render_label (PRIMARY[, MOD]...[, SIZE][, PREFIX]); the bottom strip
+	// is the bound (verified) suffix checksum and the user note.
+	// The trailing PREFIX slot echoes the stripped front prefix
 	// (0x, bc1, cosmos1, the SSH header, …). The prefix is the only elastic
 	// element and is truncated to the character budget the grid leaves on the
 	// label line: lineChars = floor(gridW / (labelTextPx * labelAdvanceEm)).
@@ -882,7 +884,7 @@ func drawColorBar(s *strings.Builder, digest, second *[64]byte, style VisualStyl
 	s.WriteString("</g>")
 }
 
-// drawLabelStrips renders the top and bottom label strips (spec v15). topText
+// drawLabelStrips renders the top and bottom label strips. topText
 // is the render_label projection of the characterization; when the input was
 // >512-bit truncated it begins with the loud "+hash " marker, which
 // is split back out and rendered as a bold dark-red <tspan> so the flat text
