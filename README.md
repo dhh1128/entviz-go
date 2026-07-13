@@ -9,6 +9,10 @@
 Go implementation of [entviz](https://github.com/dhh1128/entviz) (spec **v15**)
 — visualize high-entropy values as comparable SVG diagrams.
 
+## Part of the entviz family
+
+entviz is defined by a language-independent [specification](https://github.com/dhh1128/entviz/blob/main/docs/spec.md), with conformant implementations in Python (reference), Rust, TypeScript/JS + React, Java, and Go — all passing the same shared conformance corpus. See the **[directory of implementations](https://github.com/dhh1128/entviz#implementations)**, browse the [spec & docs site](https://dhh1128.github.io/entviz/), or **[try it live in the browser](https://dhh1128.github.io/entviz-js/)**.
+
 ## Status: certified against the v15 conformance corpus ✅
 
 A full, self-contained implementation that passes the shared conformance corpus
