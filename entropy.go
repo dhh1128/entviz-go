@@ -197,6 +197,15 @@ func parseCesr(text string) (*Parsed, error) {
 		{"1AAJ", "secp256r1 pub/enc key", 48},
 		{"1AAR", "FN-DSA-512 sig", 892},
 		{"1AAQ", "FN-DSA-512 pubkey", 1200},
+		// Dater (MtrDex.DateTime): an ISO-8601 datetime with `:`->`c`, `.`->`d`,
+		// `+`->`p` substitutions, so the whole qb64 is base64url. Recognized only
+		// to LABEL it correctly (not `raw`); a datetime is low-entropy and
+		// directly human-readable, so entviz does NOT treat it as a comparison
+		// target and characterize assigns it NO role (see this.i:idxs1gs0 and
+		// docs/spec.md role principle). It is a Matter code with a fixed 4-char
+		// prefix + fixed size, so it fits this flat table with no special path
+		// (unlike the Indexer below).
+		{"1AAG", "datetime", 36},
 	}
 	if text == "" {
 		return nil, nil
@@ -222,15 +231,58 @@ func parseCesr(text string) (*Parsed, error) {
 		items = four
 	case first != '0' && first != '1' && anyLen(one):
 		items = one
-	default:
-		return nil, nil
 	}
 	for _, it := range items {
 		if strings.HasPrefix(text, it.code) && length == it.total && isBase64urlNopad(text) {
+			// The derivation code is IDENTITY, not a stripped prefix: it is
+			// base64url like the body and sits contiguously at the front, so it
+			// stays IN the core (rendered in cells AND bound by the
+			// fingerprint). See this.i:s3mpr3fx and this.i:h4shtext.
+			return newParsed("CESR "+it.label, BASE64URL, nil, text, nil), nil
+		}
+	}
+
+	// Matter did not match — try the Indexer table (indexed signatures).
+	// Deliberately AFTER Matter so (code, length) decides Matter-vs-Indexer,
+	// never the leading char alone. Match keys on the hard code + full size
+	// only; the variable index chars are left in the core (like the Matter
+	// derivation code above, they are bound by the fingerprint and rendered in
+	// the cells). See this.i:idxs1gs0 and issue #36.
+	for _, it := range cesrIndexerCodes {
+		if length == it.total && strings.HasPrefix(text, it.code) && isBase64urlNopad(text) {
 			return newParsed("CESR "+it.label, BASE64URL, nil, text, nil), nil
 		}
 	}
 	return nil, nil
+}
+
+// cesrIndexerCodes is the CESR Indexer code table (keri.core.coring.IdrDex) —
+// the indexed signatures a KEL carries (controller/witness sigs).
+// STRUCTURALLY DIFFERENT from the Matter tables above: each qb64 is
+// `hard-code + index + material`, so the characters AFTER the hard code vary
+// with the signature's index and CANNOT be matched as a fixed leading
+// substring. Recognition therefore keys on (hard-code, full-size total) ONLY;
+// the index chars stay in the core like any other body chars. Every variant of
+// one algorithm — current-only ("Crt"), "Big" (2-char hard code, wider index) —
+// collapses to a single label. Matter-vs-Indexer is decided by (code, length),
+// never by leading char alone. See issue #36, this.i:idxs1gs0.
+var cesrIndexerCodes = []cesrCode{
+	{"A", "Ed25519 idx sig", 88},    // Ed25519_Sig
+	{"B", "Ed25519 idx sig", 88},    // Ed25519_Crt_Sig
+	{"C", "secp256k1 idx sig", 88},  // ECDSA_256k1_Sig
+	{"D", "secp256k1 idx sig", 88},  // ECDSA_256k1_Crt_Sig
+	{"E", "secp256r1 idx sig", 88},  // ECDSA_256r1_Sig
+	{"F", "secp256r1 idx sig", 88},  // ECDSA_256r1_Crt_Sig
+	{"0A", "Ed448 idx sig", 156},    // Ed448_Sig
+	{"0B", "Ed448 idx sig", 156},    // Ed448_Crt_Sig
+	{"2A", "Ed25519 idx sig", 92},   // Ed25519_Big_Sig
+	{"2B", "Ed25519 idx sig", 92},   // Ed25519_Big_Crt_Sig
+	{"2C", "secp256k1 idx sig", 92}, // ECDSA_256k1_Big_Sig
+	{"2D", "secp256k1 idx sig", 92}, // ECDSA_256k1_Big_Crt_Sig
+	{"2E", "secp256r1 idx sig", 92}, // ECDSA_256r1_Big_Sig
+	{"2F", "secp256r1 idx sig", 92}, // ECDSA_256r1_Big_Crt_Sig
+	{"3A", "Ed448 idx sig", 160},    // Ed448_Big_Sig
+	{"3B", "Ed448 idx sig", 160},    // Ed448_Big_Crt_Sig
 }
 
 type sshKeyType struct {

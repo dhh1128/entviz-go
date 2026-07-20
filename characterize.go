@@ -192,18 +192,33 @@ func sizeBits(core string, alphabet Alphabet, basis string) int {
 // cesrRole classifies a CESR derivation-code role off the decoded primitive
 // name. Signatures -> signature; digests (SAID/hashes) -> digest; everything
 // else (seeds, keys, ciphers, blinding factors, random numbers) -> key.
-func cesrRole(name string) string {
+//
+// Returns nil for CESR primitives that are recognized but carry NO role in the
+// closed enum. A Dater ("datetime") is a low-entropy, directly human-readable
+// temporal value — entviz recognizes it only to LABEL it correctly (not `raw`),
+// NOT to endorse visualizing it as entropy. It MUST short-circuit to role=nil
+// here rather than fall through to the roleKey default. Checked before the
+// sig/digest markers so a future temporal primitive whose name happened to
+// contain one of those substrings stays role-less. See docs/spec.md role
+// principle and this.i:idxs1gs0.
+func cesrRole(name string) *string {
 	low := strings.ToLower(name)
+	for _, m := range []string{"datetime"} {
+		if strings.Contains(low, m) {
+			return nil
+		}
+	}
+	role := func(s string) *string { v := s; return &v }
 	if strings.Contains(low, "sig") {
-		return roleSignature
+		return role(roleSignature)
 	}
 	digestMarkers := []string{"blake3", "blake2b", "blake2s", "sha3", "sha2", "sha"}
 	for _, m := range digestMarkers {
 		if strings.Contains(low, m) {
-			return roleDigest
+			return role(roleDigest)
 		}
 	}
-	return roleKey
+	return role(roleKey)
 }
 
 func trimTrailingColons(s string) string {
@@ -262,7 +277,7 @@ func describeFromParsed(p *Parsed) (*string, *string, *OrderedMap, string) {
 	if strings.HasPrefix(typeName, "CESR ") {
 		name := typeName[len("CESR "):]
 		q.set("algorithm", name)
-		return str("cesr"), str(cesrRole(name)), q, "decoded"
+		return str("cesr"), cesrRole(name), q, "decoded"
 	}
 
 	// --- SSH public keys: "SSH <algorithm>" or "SSH key" ---
