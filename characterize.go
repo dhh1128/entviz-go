@@ -603,12 +603,26 @@ func (c *Characterization) labelSize() string {
 }
 
 // strippedPrefix returns the literal front prefix that was stripped from the
-// visualized core (a leading bind="none" part: 0x, bc1, cosmos1, Stellar G, the
-// SSH structural header, …), or "" if there is none. A bind="fold" prefix
-// (did/urn/gitoid/swhid) is already the PRIMARY slot, and a bind="core" leading
-// part is not a stripped prefix, so neither returns a value here.
+// visualized core, or "" if there is none.
+//
+// This is a leading part bound "none" or "fold" — either a presentation sigil
+// peeled off the front (0x, Stellar G, the SSH structural header, …) or a
+// folded identity prefix (did:key:, urn:isbn:, swh:1:cnt:, and from v16 the
+// bech32 cosmos1/bc1/addr1 HRP). Either way the cells do not begin at the
+// character the reader pasted, so the label has to say what was removed.
+//
+// The slot is dropped by the caller only when the PRIMARY slot ALREADY
+// displays this prefix — the did/urn/gitoid/swhid case, where PRIMARY is
+// literally "did:key" — so it is never shown twice and never lost. Before v16
+// the rule was `bind == "none"` only, which was equivalent while every folded
+// prefix was also the PRIMARY; folding the bech32 HRP breaks that coincidence,
+// because a Cosmos address's PRIMARY is "bech32" and the HRP would otherwise
+// vanish from the label entirely (`this.i:hrpb1nd`).
+//
+// A bind="core" leading part (e.g. a CESR derivation code, which is in the
+// first cell) is not a stripped prefix.
 func (c *Characterization) strippedPrefix() string {
-	if len(c.Parts) > 0 && c.Parts[0].Bind == "none" {
+	if len(c.Parts) > 0 && (c.Parts[0].Bind == "none" || c.Parts[0].Bind == "fold") {
 		return c.Parts[0].Text
 	}
 	return ""
@@ -647,7 +661,16 @@ func (c *Characterization) RenderLabel(truncated bool, suffix, note string, line
 		slots = append(slots, size)
 	}
 
-	if prefix := c.strippedPrefix(); prefix != "" {
+	prefix := c.strippedPrefix()
+	if prefix != "" && trimTrailingColons(prefix) == slots[0] {
+		// PRIMARY already displays this prefix verbatim (did:key, urn:isbn,
+		// swh:1:cnt, gitoid:blob:sha256). Showing it again would double it.
+		// A bech32 HRP fails this test (PRIMARY is "bech32"/"BTC"/"ADA"), so
+		// it is shown — the fold keeps it out of the cells, which makes the
+		// label its only text carrier (v16).
+		prefix = ""
+	}
+	if prefix != "" {
 		if lineChars >= 0 {
 			// Budget left for the prefix = the line budget minus the marker and
 			// the fixed PRIMARY/MOD/SIZE core (which never truncate) and the

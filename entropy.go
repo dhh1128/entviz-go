@@ -439,7 +439,15 @@ func parseBitcoinAddress(text string) (*Parsed, error) {
 		if c, ok2 := bech32ChecksumConst(strings.TrimSuffix(lp, "1"), lb); !ok2 || (c != 1 && c != 0x2bc830a3) {
 			return nil, &ChecksumError{Kind: "Bitcoin segwit", Address: text}
 		}
-		return newParsed("BTC SegWit", BECH32, strPtr(lp), lb, nil), nil
+		// v16: the HRP is identity (bc1 mainnet vs tb1 testnet), bound by
+		// prefix-fold; the 6-char checksum leaves the core and becomes the
+		// shown suffix, as every other verified checksum already does
+		// (`this.i:sufxbind`). Until v16 this parser kept the checksum inside
+		// the core, which bound the HRP only by accident — moving it out
+		// without folding would have made bc1 and tb1 collide.
+		br := []rune(lb)
+		return newParsed("BTC SegWit", BECH32, strPtr(lp),
+			string(br[:len(br)-6]), strPtr(string(br[len(br)-6:]))).semantic(), nil
 	}
 	return nil, nil
 }
@@ -573,7 +581,11 @@ func parseLitecoinAddress(text string) (*Parsed, error) {
 		if c, ok2 := bech32ChecksumConst(strings.TrimSuffix(lp, "1"), lb); !ok2 || (c != 1 && c != 0x2bc830a3) {
 			return nil, &ChecksumError{Kind: "Litecoin", Address: text}
 		}
-		return newParsed("LTC", BECH32, strPtr(lp), lb, nil), nil
+		// v16: same treatment as Bitcoin segwit above — fold the identity HRP,
+		// move the verified checksum out of the core and into the suffix.
+		br := []rune(lb)
+		return newParsed("LTC", BECH32, strPtr(lp),
+			string(br[:len(br)-6]), strPtr(string(br[len(br)-6:]))).semantic(), nil
 	}
 	return nil, nil
 }
@@ -612,10 +624,78 @@ func parseBitcoinCashAddress(text string) (*Parsed, error) {
 				if !cashaddrVerify(hrp, rest) {
 					return nil, &ChecksumError{Kind: "Bitcoin Cash", Address: text}
 				}
+				// v16 EXCEPTION — CashAddr is deliberately NOT folded, and
+				// keeps its 8-char checksum inside the core. Two reasons, in
+				// order of weight. (1) It is not vulnerable: the checksum
+				// covers the prefix and lives in the core, so `bitcoincash:X`
+				// and `bchtest:X` already have different cores. That is the
+				// same accidental binding v16 removes from segwit — but here
+				// removing it has a cost the other parsers do not pay.
+				// (2) The CashAddr prefix is OPTIONAL (a bare `q…`/`p…` body
+				// defaults to `bitcoincash`), so folding the literal prefix
+				// would make a bare address and its prefixed spelling — the
+				// same address — fingerprint differently, while folding a
+				// synthesized canonical prefix would put text in `parts` the
+				// user never typed.
 				fullBody := strings.ToLower(rest)
 				return newParsed("BCH", BECH32, prefix, fullBody, nil), nil
 			}
 		}
+	}
+	return nil, nil
+}
+
+// cardanoShelleyHRPs are the Cardano Shelley human-readable parts, longest
+// first so `addr_test1` is not shadowed by a shorter sibling. They mirror the
+// reference's `(?:addr|stake)(?:_test)?1` and, like it, are matched
+// case-SENSITIVELY (lowercase only); the bech32 body may be either case.
+var cardanoShelleyHRPs = []string{"addr_test1", "stake_test1", "addr1", "stake1"}
+
+// parseCardanoAddress recognizes Cardano Byron (base58, `Ae2…`/`DdzFF…`) and
+// Shelley (bech32, `addr1…`/`stake1…`/`addr_test1…`) addresses.
+//
+// v14 NOTE: Byron addresses do NOT carry a trailing base58check checksum field.
+// Their integrity check is a CRC-32 over the CBOR-encoded address embedded
+// INSIDE the decoded payload, so there is nothing to split off as a suffix and
+// nothing this parser can verify — per the v14 rule "only surface a bound
+// checksum if it was VERIFIED", the whole Byron body is the core and the
+// suffix is nil. Shelley IS checksum-verified below.
+func parseCardanoAddress(text string) (*Parsed, error) {
+	chars := []rune(text)
+	for _, b := range []struct {
+		prefix  string
+		bodyLen int
+	}{{"Ae2", 56}, {"DdzFF", 71}} {
+		pn := len([]rune(b.prefix))
+		if strings.HasPrefix(text, b.prefix) && len(chars) == pn+b.bodyLen {
+			body := string(chars[pn:])
+			if isBase58(body) {
+				return newParsed("ADA Byron", BASE58, strPtr(b.prefix), body, nil), nil
+			}
+		}
+	}
+	for _, hrp := range cardanoShelleyHRPs {
+		if !strings.HasPrefix(text, hrp) {
+			continue
+		}
+		body := string(chars[len([]rune(hrp)):])
+		n := utf8.RuneCountInString(body)
+		// 50–100 data chars plus the 6-char checksum.
+		if n < 56 || n > 106 || !isBech32Either(body) {
+			continue
+		}
+		// v14: verify the polymod on this path too — a bad checksum rejects.
+		// The polymod HRP is the prefix without its '1' separator.
+		low := strings.ToLower(body)
+		if c, ok := bech32ChecksumConst(strings.TrimSuffix(hrp, "1"), low); !ok || (c != 1 && c != 0x2bc830a3) {
+			return nil, &ChecksumError{Kind: "Cardano Shelley", Address: text}
+		}
+		// v16: the HRP is identity — `addr1` mainnet vs `addr_test1` testnet
+		// over one payload were byte-identical entvizes before the fold, and a
+		// payment vs a stake address differ the same way. Bound by prefix-fold.
+		lr := []rune(low)
+		return newParsed("ADA Shelley", BECH32, strPtr(hrp),
+			string(lr[:len(lr)-6]), strPtr(string(lr[len(lr)-6:]))).semantic(), nil
 	}
 	return nil, nil
 }
@@ -1056,7 +1136,13 @@ func parseBech32Address(text string) (*Parsed, error) {
 			dchars := []rune(data)
 			core := string(dchars[:len(dchars)-6])
 			suffix := string(dchars[len(dchars)-6:])
-			return newParsed("bech32", BECH32, strPtr(hrp+"1"), core, strPtr(suffix)), nil
+			// v16: the `<hrp>1` is an IDENTITY-BEARING prefix bound by
+			// prefix-fold. The same data payload under a different HRP
+			// denotes a different value — a different chain, a different
+			// network, or a nostr `npub` vs `nsec` — and the HRP is not in
+			// the bech32 alphabet (b, i, o and 1 are all excluded), so it
+			// cannot ride in the core. See `this.i:s3mpr3fx`, `this.i:hrpb1nd`.
+			return newParsed("bech32", BECH32, strPtr(hrp+"1"), core, strPtr(suffix)).semantic(), nil
 		}
 		return nil, &ChecksumError{Kind: "bech32", Address: text}
 	}
@@ -1283,6 +1369,7 @@ var parsers = []parserFn{
 	parseEthereumAddress,
 	parseLitecoinAddress,
 	parseBitcoinCashAddress,
+	parseCardanoAddress,
 	parseStellarAddress,
 	parseUUID,
 	parseULID,
