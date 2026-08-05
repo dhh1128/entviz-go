@@ -291,8 +291,32 @@ func describeFromParsed(p *Parsed) (*string, *string, *OrderedMap, string) {
 
 	// --- Blockchain addresses ---
 	if strings.HasPrefix(typeName, "BTC") {
-		q.set("network", "mainnet")
+		// v17: the network is READ FROM THE PREFIX, not assumed. Through v16
+		// this was a hardcoded "mainnet", so a testnet address labeled exactly
+		// like a mainnet one — mods() shows the network only on departure, so
+		// the loud `testnet` marker the v14 rule requires never appeared.
+		// Signals: segwit `bc1` mainnet / `tb1` testnet; legacy base58 version
+		// byte `1` (P2PKH) and `3` (P2SH) mainnet, `m`/`n` (P2PKH) and `2`
+		// (P2SH) testnet. Key order (network before variant) is preserved from
+		// v16 so the serialized `data-qualifiers` ordering is unchanged.
 		low := strings.ToLower(typeName)
+		pfx := strings.ToLower(prefix)
+		switch {
+		case strings.Contains(low, "segwit"):
+			if strings.HasPrefix(pfx, "tb") {
+				q.set("network", "testnet")
+			} else {
+				q.set("network", "mainnet")
+			}
+		case strings.Contains(low, "legacy"):
+			if pfx != "" && strings.ContainsAny(pfx[:1], "mn2") {
+				q.set("network", "testnet")
+			} else {
+				q.set("network", "mainnet")
+			}
+		default:
+			q.set("network", "mainnet")
+		}
 		if strings.Contains(low, "legacy") {
 			q.set("variant", "legacy")
 		} else if strings.Contains(low, "segwit") {
@@ -309,7 +333,14 @@ func describeFromParsed(p *Parsed) (*string, *string, *OrderedMap, string) {
 		return str("bch"), str(roleAddress), q, "decoded"
 	}
 	if strings.HasPrefix(typeName, "LTC") {
-		q.set("network", "mainnet")
+		// v17: as for BTC. The only testnet form this parser recognizes is the
+		// legacy `tL…`; the bech32 branch matches `ltc1` alone, so it is always
+		// mainnet (note `ltc1` also starts with `l`, not `t`).
+		if strings.HasPrefix(strings.ToLower(prefix), "t") {
+			q.set("network", "testnet")
+		} else {
+			q.set("network", "mainnet")
+		}
 		if strings.Contains(strings.ToLower(typeName), "legacy") {
 			q.set("variant", "legacy")
 		}
@@ -317,8 +348,22 @@ func describeFromParsed(p *Parsed) (*string, *string, *OrderedMap, string) {
 	}
 	if strings.HasPrefix(typeName, "ADA") {
 		if strings.Contains(typeName, "Byron") {
+			// No network qualifier for Byron, deliberately. A Byron address's
+			// network magic lives inside the CBOR-encoded payload, which this
+			// parser does not decode — the same reason its CRC-32 goes
+			// unverified (see docs/spec.md "Checksum verification"). Claiming
+			// a network we cannot read would be a guess.
 			q.set("variant", "byron")
 		} else if strings.Contains(typeName, "Shelley") {
+			// v17: Shelley states its network in the prefix — `addr1`/`stake1`
+			// are mainnet, `addr_test1`/`stake_test1` testnet. Through v16 no
+			// network qualifier was emitted at all, so a testnet address was
+			// indistinguishable from mainnet in both the model and the label.
+			if strings.Contains(strings.ToLower(prefix), "_test") {
+				q.set("network", "testnet")
+			} else {
+				q.set("network", "mainnet")
+			}
 			q.set("variant", "shelley")
 		}
 		return str("ada"), str(roleAddress), q, "decoded"

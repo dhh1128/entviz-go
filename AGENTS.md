@@ -33,7 +33,7 @@ Conformance (requires the sibling ../entviz checkout + a Python venv with lxml):
 go build -o /tmp/entviz-go-conformance ./cmd/entviz-conformance
 cd ../entviz && PYTHONPATH=src:. python -m compliance.runner \
   --impl-cmd '/tmp/entviz-go-conformance' --tiers AB
-# -> 99/99 vectors passed
+# -> 104/104 vectors passed
 ```
 
 ## Versioning

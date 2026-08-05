@@ -680,8 +680,21 @@ func parseCardanoAddress(text string) (*Parsed, error) {
 		}
 		body := string(chars[len([]rune(hrp)):])
 		n := utf8.RuneCountInString(body)
-		// 50–100 data chars plus the 6-char checksum.
-		if n < 56 || n > 106 || !isBech32Either(body) {
+		// 45–100 data chars plus the 6-char checksum.
+		//
+		// v17: the floor was 50 data chars, which silently excluded EVERY
+		// 29-byte Shelley address — reward/stake (`stake1…`) and enterprise —
+		// since 29 bytes is 47 bech32 characters ahead of the 6-char checksum.
+		// Those fell through to the generic bech32 parser and typed as `bech32`
+		// rather than `ada`; worse, their testnet forms did not parse as bech32
+		// at all, because `stake_test` contains `_`, outside the generic
+		// parser's [a-z] HRP charset, so they landed on the base64url disproof
+		// fallback with no scheme and no checksum verified. The floor is now
+		// 45: a 57-byte base address is 91 characters and a 29-byte one is 47,
+		// so both fit with margin. Widening is safe because the prefix match is
+		// anchored and this parser still runs before the generic bech32 one.
+		// See `this.i:sh3lley29`.
+		if n < 51 || n > 106 || !isBech32Either(body) {
 			continue
 		}
 		// v14: verify the polymod on this path too — a bad checksum rejects.

@@ -122,7 +122,11 @@ func TestHRPIsStillReadableInTheLabel(t *testing.T) {
 	cases := []struct{ entropy, want string }{
 		{"cosmos1qqqsyqcyq5rqwzqfpg9scrgwpugpzysnrk363e", "bech32, cosmos1"},
 		{"osmo1qqqsyqcyq5rqwzqfpg9scrgwpugpzysntdz28t", "bech32, osmo1"},
-		{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", "BTC, tb1"},
+		// v17 added the `testnet` mod here. When this vector was written for
+		// v16 it read `BTC, tb1` — a testnet address labeled exactly like its
+		// mainnet twin, because the network qualifier was hardcoded to
+		// mainnet. See v17_network_qualifier_test.go and `this.i:n3twrkq`.
+		{"tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx", "BTC, testnet, tb1"},
 		{"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", "BTC, bc1"},
 		{"ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n9", "LTC, ltc1"},
 	}
