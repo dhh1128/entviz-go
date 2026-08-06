@@ -50,11 +50,15 @@ jobs:
 
       # The entviz reference repo carries the algorithm spec, SPEC_VERSION, the
       # golden conformance corpus, and the single authoritative Python runner
-      # this module is certified against. PINNED to tag v0.17.0: that tag carries
+      # this module is certified against. PINNED to tag v0.17.1: that tag carries
       # SPEC_VERSION v17 (the network qualifier is derived from the input, and
-      # Cardano Shelley accepts its 29-byte forms) plus the regenerated corpus —
-      # five new vectors (btc-legacy-testnet, cardano-stake{,-testnet},
-      # cardano-byron-{short,long}) and no changed golden rasters. NOTE:
+      # Cardano Shelley accepts its 29-byte forms) plus the v17 CORRECTIONS —
+      # the generic bech32 path claims less (32-char data floor, and a failing
+      # polymod falls through instead of rejecting) and Tier A now compares the
+      # label strips' node shape. err-cosmos-bad-checksum becomes the
+      # cosmos-bad-checksum-falls-through render vector and hex-bech32-shaped is
+      # new, so the corpus is 86 render + 11 error vectors. The spec stays at
+      # v17 — this is a library patch. NOTE:
       # bumping this module's SPEC_VERSION
       # later REQUIRES bumping this pin in lockstep — the runner asserts the
       # corpus spec_version equals the impl's data-entviz-version and fails
@@ -64,7 +68,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           repository: dhh1128/entviz
-          ref: v0.17.0
+          ref: v0.17.1
           path: entviz-ref
           sparse-checkout: |
             compliance
@@ -108,13 +112,13 @@ jobs:
           persist-credentials: false
 
       # Same pinned reference as the Tier-A job (see that job's note): tag
-      # v0.17.0 carries the v17 spec + regenerated corpus, and the pin must move
-      # with this module's SPEC_VERSION.
+      # v0.17.1 carries the v17 spec plus its corrections and the regenerated
+      # corpus, and the pin must move with this module's SPEC_VERSION.
       - name: Check out the entviz reference (spec + corpus + runner)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           repository: dhh1128/entviz
-          ref: v0.17.0
+          ref: v0.17.1
           path: entviz-ref
           sparse-checkout: |
             compliance

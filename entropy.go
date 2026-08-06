@@ -1136,14 +1136,23 @@ func parseBech32Address(text string) (*Parsed, error) {
 			continue
 		}
 		data := string(chars[sep+1:])
-		if utf8.RuneCountInString(data) < 8 || !allIn(data, bech32Chars) {
+		// v17 correction: the data floor was 8, which made the structural match
+		// a claim this parser could not support. Measured before the change, 34
+		// of 3000 random short hex strings (~1.1%) matched `<letters>1<8+ bech32
+		// chars>` by accident and were REJECTED outright on the failing polymod
+		// — ordinary values entviz simply would not render. A real bech32
+		// payload is 20+ bytes, so its data part (payload + the 6-char
+		// checksum) is comfortably over 32 characters; the corpus Cosmos vector
+		// has 38. NOTE the frame: `data` here is everything after the separator
+		// INCLUDING the 6-char checksum, which is exactly what the reference's
+		// regex group bounds, so the reference's 32 transfers unchanged.
+		// See `this.i:b3ch32fl`.
+		if utf8.RuneCountInString(data) < 32 || !allIn(data, bech32Chars) {
 			continue
 		}
-		// Structural match: <hrp>1<data> with a lowercase HRP and 8+ bech32
+		// Structural match: <hrp>1<data> with a lowercase HRP and 32+ bech32
 		// data chars. Because neither HRP ([a-z]) nor data (bech32 charset)
-		// can contain '1', this is the unique valid split. The 6-char
-		// checksum is surfaced as the bound suffix, so an invalid polymod
-		// REJECTS rather than falling through to a bare bech32 encoding.
+		// can contain '1', this is the unique valid split.
 		c, ok := bech32ChecksumConst(hrp, data)
 		if ok && (c == 1 || c == 0x2bc830a3) {
 			dchars := []rune(data)
@@ -1157,7 +1166,24 @@ func parseBech32Address(text string) (*Parsed, error) {
 			// cannot ride in the core. See `this.i:s3mpr3fx`, `this.i:hrpb1nd`.
 			return newParsed("bech32", BECH32, strPtr(hrp+"1"), core, strPtr(suffix)).semantic(), nil
 		}
-		return nil, &ChecksumError{Kind: "bech32", Address: text}
+		// v17 correction: FALL THROUGH, do not reject.
+		//
+		// v14 rejected here, reasoning that "a `<hrp>1<data>` string with 8+
+		// bech32 chars is a clear bech32 structural match", so a failing polymod
+		// meant a corrupted address and rendering one would mislead. The premise
+		// was false: the shape is not distinctive, and the rejection refused
+		// ordinary values outright (~1.1% of random short hex strings, measured).
+		//
+		// Rejection is only sound when the match is unambiguous. It stays for the
+		// NAMED schemes — bc1/tb1, ltc1, addr1/stake1, bitcoincash:/bchtest: —
+		// where the prefix really is a strong signal and v14's reasoning holds.
+		// Here there is no registry of valid HRPs by design, so a failing
+		// checksum means only "this is not bech32 after all": report no match and
+		// let the input continue to the next parser and the alphabet ladder. It
+		// still never renders AS an address — the label reads `hex`/`base58`, not
+		// `bech32, cosmos1`, so a reader sees that recognition did not happen.
+		// See `this.i:b3ch32fl` and docs/spec.md "Checksum verification".
+		continue
 	}
 	return nil, nil
 }

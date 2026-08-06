@@ -280,7 +280,12 @@ func TestV14ChecksumRejection(t *testing.T) {
 		{"BTC legacy (base58check)", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb"},
 		{"BTC segwit (bech32)", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5"},
 		{"LTC (bech32)", "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n8"},
-		{"cosmos (bech32)", "cosmos1qqqsyqcyq5rqwzqfpg9scrgwpugpzysnrk363f"},
+		// NOTE: no generic-bech32 entry. v17's correction makes that path FALL
+		// THROUGH on a bad polymod instead of rejecting — the shape alone is not
+		// a sound claim, and the old rule refused ~1.1% of random short hex
+		// strings. Rejection stays for the NAMED schemes in this table, where the
+		// prefix IS a strong signal and v14's reasoning holds. See
+		// `this.i:b3ch32fl` and TestV17GenericBech32FallsThrough below.
 		{"BCH (CashAddr)", "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6q"},
 		{"LEI (MOD 97-10)", "5493001KJTIIGC8Y1R13"},
 	}
