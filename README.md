@@ -18,7 +18,7 @@ entviz is defined by a language-independent [specification](https://github.com/d
 A full, self-contained implementation that passes the shared conformance corpus
 at **Tier A** (render model) **+ Tier B** (canonical raster) for every render
 vector, rejects every error vector, and satisfies every invariant pair
-(**104/104**). What's here:
+(**106/106**). What's here:
 
 - **`core.go`** — the deterministic shared core: alphabets, tokenization +
   24-bit quant extension, the SHA-512 fingerprint, ftok median/quartile

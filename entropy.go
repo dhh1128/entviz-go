@@ -419,11 +419,17 @@ func parseBitcoinAddress(text string) (*Parsed, error) {
 				suf := string(bchars[len(bchars)-4:])
 				midLen := utf8.RuneCountInString(mid)
 				if midLen >= 21 && midLen <= 30 {
-					// The 4-byte double-SHA256 checksum is surfaced as the
-					// suffix, so it MUST verify. A structural match with a bad
-					// checksum rejects.
+					// v17 correction 2 (`this.i:w3aksig`): FALL THROUGH, do not
+					// reject. The only signal here is ONE leading character
+					// from [123mn] plus a length band — far too weak to claim
+					// the scheme. Measured, this path refused ~2% of random
+					// short values outright. Rejection is reserved for inputs
+					// carrying an explicit multi-character scheme marker (bc1,
+					// ltc1, addr1, a typed bitcoincash:, 0x+EIP-55), where a
+					// failed check really does mean "this IS that scheme, and
+					// it is corrupt".
 					if !base58checkOK(text) {
-						return nil, &ChecksumError{Kind: "Bitcoin legacy", Address: text}
+						return nil, nil
 					}
 					return newParsed("BTC legacy", BASE58, strPtr(string(first)), mid, strPtr(suf)), nil
 				}
@@ -564,10 +570,11 @@ func parseLitecoinAddress(text string) (*Parsed, error) {
 		if strings.HasPrefix(text, prefix) {
 			rest := text[len(prefix):]
 			if utf8.RuneCountInString(rest) == 33 && isBase58(rest) {
-				// Litecoin legacy is base58check; verify the double-SHA256
-				// checksum — a bad checksum rejects.
+				// v17 correction 2 (`this.i:w3aksig`): fall through. `L`/`tL`
+				// plus a fixed length is a weak signal, same as Bitcoin legacy
+				// above.
 				if !base58checkOK(text) {
-					return nil, &ChecksumError{Kind: "Litecoin legacy", Address: text}
+					return nil, nil
 				}
 				return newParsed("LTC legacy", BASE58, strPtr(prefix), rest, nil), nil
 			}
@@ -616,12 +623,25 @@ func parseBitcoinCashAddress(text string) (*Parsed, error) {
 				// from bech32's polymod). The checksum HRP is the prefix WITHOUT
 				// the colon, defaulting to "bitcoincash" for a bare q…/p… form.
 				// The payload (INCLUDING its 8 trailing checksum chars) is what
-				// the BCH code covers. A bad checksum rejects.
+				// the BCH code covers.
+				//
+				// v17 correction 2 (`this.i:w3aksig`): the verdict on a bad
+				// checksum now depends on whether the INPUT carried the prefix.
+				// An explicit `bitcoincash:`/`bchtest:` is an unambiguous
+				// marker, so a failure there is a corrupt address and still
+				// REJECTS. A bare `q…`/`p…` body is a single leading character
+				// plus a length — too weak to claim, so it falls through like
+				// the other weak-signal paths. The split is by INPUT, not by
+				// parser: the same recognizer does both.
+				explicit := prefix != nil
 				hrp := "bitcoincash"
 				if prefix != nil {
 					hrp = strings.ToLower(strings.TrimSuffix(*prefix, ":"))
 				}
 				if !cashaddrVerify(hrp, rest) {
+					if !explicit {
+						return nil, nil
+					}
 					return nil, &ChecksumError{Kind: "Bitcoin Cash", Address: text}
 				}
 				// v16 EXCEPTION — CashAddr is deliberately NOT folded, and
@@ -853,11 +873,12 @@ func parseLEI(text string) (*Parsed, error) {
 		return nil, nil
 	}
 	if !leiChecksumOK(upper) {
-		// 20 base36 chars WITH the reserved "00" is an unambiguous LEI
-		// match and the MOD 97-10 check digits are the bound suffix — so a bad
-		// checksum REJECTS rather than falling through to a generic base36
-		// encoding (which would render an invalid LEI).
-		return nil, &ChecksumError{Kind: "LEI", Address: upper}
+		// v17 correction 2 (`this.i:w3aksig`): fall through. v14 called "20
+		// base36 chars WITH the reserved 00" an unambiguous LEI match. It is
+		// not — the reserved pair lands by chance in 1 of 1296 random 20-char
+		// base36 strings, and this path was refusing real values. The signal is
+		// a length plus two characters, not an explicit scheme marker.
+		return nil, nil
 	}
 	return newParsed("LEI", BASE36, nil, upper[:18], strPtr(upper[18:])), nil
 }

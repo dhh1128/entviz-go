@@ -268,26 +268,25 @@ func TestUrnComponentsDropped(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Checksum verification (base58check / bech32 / CashAddr / LEI) rejects a
-// structurally-matching address whose bound checksum does not verify, while a
-// valid address of the same scheme still parses. Mirrors the entviz corpus
-// error vectors and the reference Base58CheckError/Bech32ChecksumError/
-// LEIChecksumError behavior.
+// Checksum verification (bech32 / CashAddr) rejects a structurally-matching
+// address whose bound checksum does not verify, while a valid address of the
+// same scheme still parses. Mirrors the entviz corpus error vectors and the
+// reference Bech32ChecksumError behavior.
 // ---------------------------------------------------------------------------
 
 func TestV14ChecksumRejection(t *testing.T) {
 	bad := []struct{ scheme, in string }{
-		{"BTC legacy (base58check)", "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb"},
 		{"BTC segwit (bech32)", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5"},
 		{"LTC (bech32)", "ltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kgmn4n8"},
-		// NOTE: no generic-bech32 entry. v17's correction makes that path FALL
-		// THROUGH on a bad polymod instead of rejecting — the shape alone is not
-		// a sound claim, and the old rule refused ~1.1% of random short hex
-		// strings. Rejection stays for the NAMED schemes in this table, where the
-		// prefix IS a strong signal and v14's reasoning holds. See
-		// `this.i:b3ch32fl` and TestV17GenericBech32FallsThrough below.
-		{"BCH (CashAddr)", "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6q"},
-		{"LEI (MOD 97-10)", "5493001KJTIIGC8Y1R13"},
+		// NOTE: this table is now exactly the EXPLICIT-marker schemes. v17's
+		// second correction (`this.i:w3aksig`) moved every weak-signal path out
+		// of it — generic bech32, Bitcoin/Litecoin legacy base58check, bare
+		// CashAddr, and LEI — because a leading character, a length band, or a
+		// reserved digit pair is not a claim the parser can support, and
+		// rejecting on it refused ~2% of random values. What remains carries an
+		// unmistakable multi-character marker. See
+		// v17_explicit_marker_test.go.
+		{"BCH (typed bitcoincash: prefix)", "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6q"},
 	}
 	for _, b := range bad {
 		p, err := Parse(b.in)

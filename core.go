@@ -23,7 +23,7 @@ const SpecVersion = "v17"
 
 // LibVersion is this Go module's own version stamp. It is per-impl and is not
 // compared by the conformance checker (only data-entviz-version is).
-const LibVersion = "0.17.1"
+const LibVersion = "0.17.2"
 
 // Alphabet describes a character set and its tokenization density.
 type Alphabet struct {
